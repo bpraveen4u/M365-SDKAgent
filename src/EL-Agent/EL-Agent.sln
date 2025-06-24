@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36212.18 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{A9E3F50B-275E-4AF7-ADCE-8BE12D41E305}") = "EL-Agent", "EL-Agent.atkproj", "{814969DC-F2FF-706B-05F5-23FAA4318686}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EL-Agent-Api", "..\EL-Agent-Api\EL-Agent-Api.csproj", "{07E4F3E4-D7EA-6B63-D9B0-5205CD22D75B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{814969DC-F2FF-706B-05F5-23FAA4318686}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{814969DC-F2FF-706B-05F5-23FAA4318686}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{814969DC-F2FF-706B-05F5-23FAA4318686}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{814969DC-F2FF-706B-05F5-23FAA4318686}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{814969DC-F2FF-706B-05F5-23FAA4318686}.Release|Any CPU.Build.0 = Release|Any CPU
+		{814969DC-F2FF-706B-05F5-23FAA4318686}.Release|Any CPU.Deploy.0 = Release|Any CPU
+		{07E4F3E4-D7EA-6B63-D9B0-5205CD22D75B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{07E4F3E4-D7EA-6B63-D9B0-5205CD22D75B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{07E4F3E4-D7EA-6B63-D9B0-5205CD22D75B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{07E4F3E4-D7EA-6B63-D9B0-5205CD22D75B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F2B2F360-75C7-47F6-BD17-B207F6E0CE16}
+	EndGlobalSection
+EndGlobal
