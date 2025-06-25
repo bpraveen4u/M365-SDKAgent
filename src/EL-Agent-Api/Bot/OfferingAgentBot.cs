@@ -34,24 +34,29 @@ namespace ElAgentApi.Bot
                 new ServiceDescriptor(typeof(Kernel), _kernel),
             ];
 
+            // create the chat message to send to the agent
+            var message = new ChatMessageContent(AuthorRole.User, turnContext.Activity.Text);
+
             // Start a Streaming Process 
-            await turnContext.StreamingResponse.QueueInformativeUpdateAsync("Working on a response for you");
+            await turnContext.StreamingResponse.QueueInformativeUpdateAsync("Working on a response for you", cancellationToken);
 
             ChatHistory chatHistory = turnState.GetValue("conversation.chatHistory", () => new ChatHistory());
 
-            // Invoke the WeatherForecastAgent to process the message
-            await foreach (ChatMessageContent response in _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, chatHistory))
-            {
-                if (response == null)
-                {
-                    turnContext.StreamingResponse.QueueTextChunk("Sorry, I couldn't get the offerings at the moment.");
-                    await turnContext.StreamingResponse.EndStreamAsync(cancellationToken);
-                    return;
-                }
+            await _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, turnContext, chatHistory, cancellationToken);
 
-                chatHistory.Add(response);
-                turnContext.StreamingResponse.QueueTextChunk(response.Content);
-            }
+            // Invoke the WeatherForecastAgent to process the message
+            //await foreach (StreamingChatMessageContent response in _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, chatHistory))
+            //{
+            //    if (response == null)
+            //    {
+            //        turnContext.StreamingResponse.QueueTextChunk("Sorry, I couldn't get the offerings at the moment.");
+            //        await turnContext.StreamingResponse.EndStreamAsync(cancellationToken);
+            //        return;
+            //    }
+
+            //    chatHistory.Add(response);
+            //    turnContext.StreamingResponse.QueueTextChunk(response.Content);
+            //}
 
             ////turnContext.StreamingResponse.QueueTextChunk(GetVideoAdaptiveCard());
             //turnContext.StreamingResponse.FinalMessage = MessageFactory.Attachment(new Attachment()
@@ -60,7 +65,7 @@ namespace ElAgentApi.Bot
             //    Content = GetVideoAdaptiveCard(),
             //});
 
-            await turnContext.StreamingResponse.EndStreamAsync(cancellationToken); // End the streaming response
+            //await turnContext.StreamingResponse.EndStreamAsync(cancellationToken); // End the streaming response
         }
 
         private async Task WelcomeMessageAsync(ITurnContext turnContext, ITurnState turnState, CancellationToken cancellationToken)

@@ -11,6 +11,7 @@
     <PackageReference Include="AdaptiveCards" Version="3.1.0" />
     <PackageReference Include="Azure.Identity" Version="1.14.0" />
     <PackageReference Include="Microsoft.Agents.Authentication.Msal" Version="1.0.1" />
+    <PackageReference Include="Microsoft.Agents.Builder" Version="1.0.1" />
     <PackageReference Include="Microsoft.Agents.Hosting.AspNetCore" Version="1.0.1" />
     <PackageReference Include="Microsoft.SemanticKernel.Agents.AzureAI" Version="1.55.0-preview" />
     <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.55.0" />
