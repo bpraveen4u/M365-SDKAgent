@@ -1,4 +1,6 @@
 ﻿using Azure;
+using EL_Agent_Api.Bot.Tools;
+using ElAgentApi.Bot.Agents;
 using Microsoft.Agents.Builder;
 using Microsoft.Agents.Builder.App;
 using Microsoft.Agents.Builder.State;
@@ -6,21 +8,23 @@ using Microsoft.Agents.Core.Models;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using ElAgentApi.Bot.Agents;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 
 namespace ElAgentApi.Bot
 {
     public class OfferingAgentBot : AgentApplication
     {
         OfferingsAgent _offeringsAgent;
+        private readonly PlaywriteMcpClient mcpClient;
         private Kernel _kernel;
         private readonly IConfiguration configuration;
 
-        public OfferingAgentBot(AgentApplicationOptions options, Kernel kernel, IConfiguration configuration, OfferingsAgent offeringsAgent) : base(options)
+        public OfferingAgentBot(AgentApplicationOptions options, Kernel kernel, IConfiguration configuration, OfferingsAgent offeringsAgent, PlaywriteMcpClient mcpClient) : base(options)
         {
             _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
             this.configuration = configuration;
             _offeringsAgent = offeringsAgent;
+            this.mcpClient = mcpClient;
             OnConversationUpdate(ConversationUpdateEvents.MembersAdded, WelcomeMessageAsync);
             OnActivity(ActivityTypes.Message, MessageActivityAsync, rank: RouteRank.Last);
         }
@@ -42,7 +46,45 @@ namespace ElAgentApi.Bot
 
             ChatHistory chatHistory = turnState.GetValue("conversation.chatHistory", () => new ChatHistory());
 
-            await _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, turnContext, chatHistory, cancellationToken);
+            //await _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, turnContext, chatHistory, cancellationToken);
+
+            var tools = await mcpClient.GetAvailableToolsAsync();
+#pragma warning disable SKEXP0001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+            _kernel.Plugins.AddFromFunctions("GitHub", tools.Select(aiFunction => aiFunction.AsKernelFunction()));
+#pragma warning restore SKEXP0001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+            //if (tools != null && tools.Any())
+            //{
+            //    var toolList = string.Join(", ", tools.Select(t => t.Name));
+            //    turnContext.StreamingResponse.QueueTextChunk($"Available tools: {toolList}");
+            //}
+            //else
+            //{
+            //    turnContext.StreamingResponse.QueueTextChunk("No tools available at the moment.");
+            //}
+
+            // Enable automatic function calling
+#pragma warning disable SKEXP0001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+            OpenAIPromptExecutionSettings executionSettings = new()
+            {
+                Temperature = 0,
+                //ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
+                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(options: new() { RetainArgumentTypes = true })
+            };
+#pragma warning restore SKEXP0001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+
+            // Add the user message to the chat history
+            var result = await _kernel.InvokePromptAsync(turnContext.Activity.Text, new(executionSettings)).ConfigureAwait(false);
+
+            
+            if (result != null)
+            {
+
+                turnContext.StreamingResponse.QueueTextChunk(result.ToString());
+            }
+            else
+            {
+                turnContext.StreamingResponse.QueueTextChunk("No result returned from the agent.");
+            }
 
             // Invoke the WeatherForecastAgent to process the message
             //await foreach (StreamingChatMessageContent response in _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, chatHistory))
@@ -65,7 +107,7 @@ namespace ElAgentApi.Bot
             //    Content = GetVideoAdaptiveCard(),
             //});
 
-            //await turnContext.StreamingResponse.EndStreamAsync(cancellationToken); // End the streaming response
+            await turnContext.StreamingResponse.EndStreamAsync(cancellationToken); // End the streaming response
         }
 
         private async Task WelcomeMessageAsync(ITurnContext turnContext, ITurnState turnState, CancellationToken cancellationToken)
