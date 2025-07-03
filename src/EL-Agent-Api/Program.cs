@@ -1,33 +1,53 @@
+using EL_Agent_Api.Bot.Plugins;
 using ElAgentApi;
 using ElAgentApi.Bot.Agents;
-using Microsoft.SemanticKernel;
-using Microsoft.Agents.Hosting.AspNetCore;
-using Microsoft.Agents.Builder.App;
+using ElAgentApi.Bot.Plugins;
 using Microsoft.Agents.Builder;
+using Microsoft.Agents.Builder.App;
+using Microsoft.Agents.Hosting.AspNetCore;
 using Microsoft.Agents.Storage;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 
 var builder = WebApplication.CreateBuilder(args);
+AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
 
 builder.AddServiceDefaults();
+builder.AddAzureOpenAIClient("azureOpenAI");
 builder.Services.AddControllers();
 builder.Services.AddHttpClient("WebClient", client => client.Timeout = TimeSpan.FromSeconds(600));
 builder.Services.AddHttpContextAccessor();
 builder.Logging.AddConsole();
 
 
+//builder.Services.AddSingleton<MathPlugin>();
+//builder.Services.AddSingleton<OfferingsPlugin>();
+//builder.Services.AddSingleton<OfferingsAgent>();
+
 // Register Semantic Kernel
-builder.Services.AddKernel();
+builder.Services.AddKernel().AddAzureOpenAIChatCompletion("gpt-4");
 
-// Register the AI service of your choice. AzureOpenAI and OpenAI are demonstrated...
-//var config = builder.Configuration.Get<ConfigOptions>();
+//Orchestrator Agent
+//builder.Services.AddSingleton(builder =>
+//{
+//    var _settings = new OpenAIPromptExecutionSettings()
+//    {
+//        ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
+//        Temperature = 0.1,
+//        MaxTokens = 500,
+//    };
+//    ChatCompletionAgent agent = new (ReadFileForPromptTemplateConfig("./Bot/Agents/Prompts/Agent.yaml"), templateFactory: new KernelPromptTemplateFactory())
+//    {
+//        Kernel = builder.GetRequiredService<Kernel>(),
+//        Arguments = new(_settings)
+//    };
+//    agent.Kernel.Plugins.AddFromObject(builder.GetRequiredService<MathPlugin>());
+//    agent.Kernel.Plugins.AddFromObject(builder.GetRequiredService<OfferingsPlugin>());
 
-//builder.Services.AddAzureOpenAIChatCompletion(
-//    deploymentName: config.Azure.OpenAIDeploymentName,
-//    endpoint: config.Azure.OpenAIEndpoint,
-//    apiKey: config.Azure.OpenAIApiKey
-//);
+//    return agent;
+//});
 
-builder.Services.AddSingleton<OfferingsAgent>();
 
 // Add AspNet token validation
 builder.Services.AddBotAspNetAuthentication(builder.Configuration);
@@ -77,4 +97,5 @@ else
 }
 
 app.Run();
+
 

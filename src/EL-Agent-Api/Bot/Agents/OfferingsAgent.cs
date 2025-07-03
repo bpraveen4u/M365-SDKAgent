@@ -18,19 +18,21 @@ namespace ElAgentApi.Bot.Agents
 {
     public class OfferingsAgent
     {
+        private readonly ITurnContext turnContext;
 #pragma warning disable SKEXP0110 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         AzureAIAgent aiAgent;
 
         private PersistentAgentsClient agentsClient;
 
-        public OfferingsAgent(IConfiguration configuration)
+        public OfferingsAgent(IConfiguration configuration, ITurnContext turnContext)
         {
             agentsClient = AzureAIAgent.CreateAgentsClient(configuration.GetValue<string>("AIProjectConnectionString")!, new DefaultAzureCredential());
             var agent = agentsClient.Administration.GetAgent("asst_YK2flcJLkjtQBgnEC9qkJsiN");
             aiAgent = new(agent, agentsClient);
+            this.turnContext = turnContext;
         }
 
-        public async Task InvokeAgentAsync(string input, ITurnContext turnContext, ChatHistory chatHistory, CancellationToken cancellationToken)
+        public async Task InvokeAgentAsync(string input, CancellationToken cancellationToken)
         {
             AzureAIAgentThread agentThread = new(aiAgent.Client);
 
@@ -111,7 +113,7 @@ namespace ElAgentApi.Bot.Agents
             }
             finally
             {
-                await turnContext.StreamingResponse.EndStreamAsync(cancellationToken);
+                //await turnContext.StreamingResponse.EndStreamAsync(cancellationToken);
             }
 
         }

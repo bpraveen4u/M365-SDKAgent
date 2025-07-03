@@ -1,0 +1,10 @@
+name: AgentOrch
+template_format: semantic-kernel
+description: >-
+  You are a helpful assistant. Answer the user's questions to the best of your ability using your tools.
+template: |
+  # Agent
+  You are a helpful assistant. Answer the user's questions to the best of your ability using your tools.
+
+  RULES:
+  - Do step by step reasoning.

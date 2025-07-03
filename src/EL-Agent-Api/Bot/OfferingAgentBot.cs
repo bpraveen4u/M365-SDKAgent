@@ -7,20 +7,23 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using ElAgentApi.Bot.Agents;
+using Microsoft.SemanticKernel.Agents;
 
 namespace ElAgentApi.Bot
 {
     public class OfferingAgentBot : AgentApplication
     {
-        OfferingsAgent _offeringsAgent;
+        OrchestratorAgent orchestratorAgent;
         private Kernel _kernel;
         private readonly IConfiguration configuration;
+        private readonly ChatCompletionAgent _chatCompletionAgent;
 
-        public OfferingAgentBot(AgentApplicationOptions options, Kernel kernel, IConfiguration configuration, OfferingsAgent offeringsAgent) : base(options)
+        public OfferingAgentBot(AgentApplicationOptions options, Kernel kernel, IConfiguration configuration) : base(options)
         {
             _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
             this.configuration = configuration;
-            _offeringsAgent = offeringsAgent;
+            //_chatCompletionAgent = chatCompletionAgent;
+            //_offeringsAgent = offeringsAgent;
             OnConversationUpdate(ConversationUpdateEvents.MembersAdded, WelcomeMessageAsync);
             OnActivity(ActivityTypes.Message, MessageActivityAsync, rank: RouteRank.Last);
         }
@@ -32,7 +35,15 @@ namespace ElAgentApi.Bot
                 new ServiceDescriptor(typeof(ITurnState), turnState),
                 new ServiceDescriptor(typeof(ITurnContext), turnContext),
                 new ServiceDescriptor(typeof(Kernel), _kernel),
+                new ServiceDescriptor(typeof(OfferingsAgent), sp => new OfferingsAgent(this.configuration, turnContext), ServiceLifetime.Singleton),
             ];
+
+            // Add the offerings agent to the service collection
+            var serviceProvider = serviceCollection.BuildServiceProvider();
+            // Start a Streaming Process 
+            await turnContext.StreamingResponse.QueueInformativeUpdateAsync("Working on a response for you");
+
+            orchestratorAgent = new OrchestratorAgent(_kernel, serviceCollection.BuildServiceProvider());
 
             // create the chat message to send to the agent
             var message = new ChatMessageContent(AuthorRole.User, turnContext.Activity.Text);
@@ -41,8 +52,16 @@ namespace ElAgentApi.Bot
             await turnContext.StreamingResponse.QueueInformativeUpdateAsync("Working on a response for you", cancellationToken);
 
             ChatHistory chatHistory = turnState.GetValue("conversation.chatHistory", () => new ChatHistory());
-
-            await _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, turnContext, chatHistory, cancellationToken);
+            //var agentThread = new ChatHistoryAgentThread();
+            //await foreach(var delta in orchestratorAgent.InvokeAgentAsync(turnContext.Activity.Text, agentThread, cancellationToken)
+            //{
+            //    // Process each chunk of the response
+            //    // Here you can handle the streaming response as needed
+            //    // For example, you can queue the text chunk to the streaming response
+            //    turnContext.StreamingResponse.QueueTextChunk(delta.Message.Content!);
+            //}
+            await orchestratorAgent.InvokeAgentAsync(turnContext.Activity.Text, chatHistory, cancellationToken);
+            //await _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, turnContext, chatHistory, cancellationToken);
 
             // Invoke the WeatherForecastAgent to process the message
             //await foreach (StreamingChatMessageContent response in _offeringsAgent.InvokeAgentAsync(turnContext.Activity.Text, chatHistory))
