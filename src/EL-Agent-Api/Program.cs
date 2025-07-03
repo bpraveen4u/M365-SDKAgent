@@ -20,34 +20,8 @@ builder.Services.AddHttpClient("WebClient", client => client.Timeout = TimeSpan.
 builder.Services.AddHttpContextAccessor();
 builder.Logging.AddConsole();
 
-
-//builder.Services.AddSingleton<MathPlugin>();
-//builder.Services.AddSingleton<OfferingsPlugin>();
-//builder.Services.AddSingleton<OfferingsAgent>();
-
 // Register Semantic Kernel
 builder.Services.AddKernel().AddAzureOpenAIChatCompletion("gpt-4");
-
-//Orchestrator Agent
-//builder.Services.AddSingleton(builder =>
-//{
-//    var _settings = new OpenAIPromptExecutionSettings()
-//    {
-//        ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-//        Temperature = 0.1,
-//        MaxTokens = 500,
-//    };
-//    ChatCompletionAgent agent = new (ReadFileForPromptTemplateConfig("./Bot/Agents/Prompts/Agent.yaml"), templateFactory: new KernelPromptTemplateFactory())
-//    {
-//        Kernel = builder.GetRequiredService<Kernel>(),
-//        Arguments = new(_settings)
-//    };
-//    agent.Kernel.Plugins.AddFromObject(builder.GetRequiredService<MathPlugin>());
-//    agent.Kernel.Plugins.AddFromObject(builder.GetRequiredService<OfferingsPlugin>());
-
-//    return agent;
-//});
-
 
 // Add AspNet token validation
 builder.Services.AddBotAspNetAuthentication(builder.Configuration);
@@ -65,7 +39,7 @@ builder.AddAgentApplicationOptions();
 builder.Services.AddTransient<AgentApplicationOptions>();
 
 // Add the bot (which is transient)
-builder.AddAgent<ElAgentApi.Bot.OfferingAgentBot>();
+builder.AddAgent<ElAgentApi.Bot.LearningAgentSkill>();
 
 var app = builder.Build();
 

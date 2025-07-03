@@ -54,8 +54,8 @@ public class OrchestratorAgent
     public async Task InvokeAgentAsync(ChatMessageContent message, ChatHistory chatHistory, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chatHistory);
-        AgentThread thread = new ChatHistoryAgentThread();
         chatHistory.Add(message);
+        AgentThread thread = new ChatHistoryAgentThread();
         var turnContext = service.GetService<ITurnContext>();
 
         await foreach (var response in this.agent.InvokeStreamingAsync(chatHistory, thread: thread, cancellationToken: cancellationToken))
