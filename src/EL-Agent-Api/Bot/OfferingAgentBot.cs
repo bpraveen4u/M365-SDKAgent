@@ -34,11 +34,12 @@ namespace ElAgentApi.Bot
                 new ServiceDescriptor(typeof(OfferingsAgent), sp => new OfferingsAgent(this.configuration, turnContext), ServiceLifetime.Singleton),
             ];
 
-            // Add the offerings agent to the service collection
             var serviceProvider = serviceCollection.BuildServiceProvider();
-            // Start a Streaming Process 
-            await turnContext.StreamingResponse.QueueInformativeUpdateAsync("Working on a response for you");
 
+            // Start a Streaming Process 
+            await turnContext.StreamingResponse.QueueInformativeUpdateAsync("Working on a response for you", cancellationToken);
+
+            // Create the Orchestrator Agent
             var orchestratorAgent = new OrchestratorAgent(kernel, serviceCollection.BuildServiceProvider());
 
             // create the chat message to send to the agent
