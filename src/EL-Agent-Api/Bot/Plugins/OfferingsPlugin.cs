@@ -28,7 +28,7 @@ namespace EL_Agent_Api.Bot.Plugins
             //var turnState = serviceProvider.GetService<ITurnState>();
 
             //ChatHistory chatHistory = turnState.GetValue("conversation.chatHistory", () => new ChatHistory());
-            await offeringsAgent.InvokeAgentAsync(offerings, cancellationToken);
+            await offeringsAgent.InvokeAgentAsync(new ChatMessageContent(AuthorRole.User, offerings), cancellationToken);
         }
     }
 }

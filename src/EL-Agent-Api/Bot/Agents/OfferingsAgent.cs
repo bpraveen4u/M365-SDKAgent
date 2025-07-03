@@ -3,6 +3,7 @@ using Azure.Identity;
 using ElAgentApi.Bot.Models;
 using ElAgentApi.Bot.Plugins;
 using Microsoft.Agents.Builder;
+using Microsoft.Agents.Builder.State;
 using Microsoft.Agents.Core.Models;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
@@ -19,32 +20,50 @@ namespace ElAgentApi.Bot.Agents
     public class OfferingsAgent
     {
         private readonly ITurnContext turnContext;
+        private readonly ITurnState turnState;
 #pragma warning disable SKEXP0110 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         AzureAIAgent aiAgent;
 
         private PersistentAgentsClient agentsClient;
 
-        public OfferingsAgent(IConfiguration configuration, ITurnContext turnContext)
+        public OfferingsAgent(IConfiguration configuration, ITurnContext turnContext, ITurnState turnState)
         {
             agentsClient = AzureAIAgent.CreateAgentsClient(configuration.GetValue<string>("AIProjectConnectionString")!, new DefaultAzureCredential());
             var agent = agentsClient.Administration.GetAgent("asst_YK2flcJLkjtQBgnEC9qkJsiN");
             aiAgent = new(agent, agentsClient);
             this.turnContext = turnContext;
+            this.turnState = turnState;
         }
 
-        public async Task InvokeAgentAsync(string input, CancellationToken cancellationToken)
+        public async Task InvokeAgentAsync(ChatMessageContent chatMessage, CancellationToken cancellationToken)
         {
-            AzureAIAgentThread agentThread = new(aiAgent.Client);
-
+            AzureAIAgentThread? agentThread = null;
             var fileReferences = new List<FileReference>();
             var citations = new List<Citation>();
             var quote = string.Empty;
+            ChatHistory chatHistory = turnState.GetValue("conversation.chatHistory", () => new ChatHistory());
 
-            ChatMessageContent message = new(AuthorRole.User, input);
+            var threadId = turnState.GetValue("conversation.OfferingThreadId", () => string.Empty);
+            if (!string.IsNullOrEmpty(threadId))
+            {
+                // get existing agent thread
+                agentThread = new(aiAgent.Client, threadId);
+            }
+            else
+            {
+                agentThread = new(aiAgent.Client);
+            }
+
             try
             {
-                await foreach (StreamingChatMessageContent chunk in aiAgent.InvokeStreamingAsync(message, agentThread, cancellationToken: cancellationToken))
+                await foreach (StreamingChatMessageContent chunk in aiAgent.InvokeStreamingAsync(chatMessage, agentThread, cancellationToken: cancellationToken))
                 {
+                    if (string.IsNullOrEmpty(threadId))
+                    {
+                        threadId = agentThread.Id;
+                        turnState.SetValue("conversation.OfferingThreadId", threadId!);
+                    }
+
                     // get the annotation content from the message chunk items, if there are any
                     var annotations = chunk.Items.OfType<StreamingAnnotationContent>();
 
