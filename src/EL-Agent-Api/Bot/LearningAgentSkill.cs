@@ -1,13 +1,16 @@
 ﻿using Azure;
+using ElAgentApi.Bot.Agents;
 using Microsoft.Agents.Builder;
 using Microsoft.Agents.Builder.App;
 using Microsoft.Agents.Builder.State;
+using Microsoft.Agents.Builder.UserAuth;
 using Microsoft.Agents.Core.Models;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using ElAgentApi.Bot.Agents;
 using Microsoft.SemanticKernel.Agents;
+using Microsoft.SemanticKernel.ChatCompletion;
+using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
 
 namespace ElAgentApi.Bot
 {
@@ -16,6 +19,11 @@ namespace ElAgentApi.Bot
         private Kernel kernel;
         private readonly IConfiguration configuration;
         private ServiceProvider? serviceProvider;
+
+        /// <summary>
+        /// Default Sign In Name
+        /// </summary>
+        private string _defaultDisplayName = "Unknown User";
 
         public LearningAgentSkill(AgentApplicationOptions options, Kernel kernel, IConfiguration configuration) : base(options)
         {
@@ -34,6 +42,8 @@ namespace ElAgentApi.Bot
                 eoc.Text = exception.Message;
                 await turnContext.SendActivityAsync(eoc, cancellationToken);
             });
+
+            UserAuthorization.OnUserSignInFailure(OnUserSignInFailure);
         }
 
         protected async Task EndOfConversationAsync(ITurnContext turnContext, ITurnState turnState, CancellationToken cancellationToken)
@@ -94,9 +104,63 @@ namespace ElAgentApi.Bot
             {
                 if (member.Id != turnContext.Activity.Recipient.Id)
                 {
-                    await turnContext.SendActivityAsync(MessageFactory.Text("Hello and Welcome! I'm here to help with all your questions!"), cancellationToken);
+                    string displayName = await GetDisplayName(turnContext);
+                    await turnContext.SendActivityAsync(MessageFactory.Text($"Hello and Welcome, {displayName}! I'm here to help with all your questions!"), cancellationToken);
                 }
             }
+        }
+
+        /// <summary>
+        /// This method is called when the sign-in process fails with an error indicating why . 
+        /// </summary>
+        /// <param name="turnContext"></param>
+        /// <param name="turnState"></param>
+        /// <param name="handlerName"></param>
+        /// <param name="response"></param>
+        /// <param name="initiatingActivity"></param>
+        /// <param name="cancellationToken"></param>
+        private async Task OnUserSignInFailure(ITurnContext turnContext, ITurnState turnState, string handlerName, SignInResponse response, IActivity initiatingActivity, CancellationToken cancellationToken)
+        {
+            // Raise a notification to the user that the sign-in process failed.  In a production Agent, this would be used
+            // to display alternative ways to get help, or in some cases transfer to a live agent.
+            await turnContext.SendActivityAsync($"Sign In: Failed to login to '{handlerName}': {response.Cause}/{response.Error.Message}", cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Gets the display name of the user from the Graph API using the access token.
+        /// </summary>
+        private async Task<string> GetDisplayName(ITurnContext turnContext)
+        {
+            string displayName = _defaultDisplayName;
+            var graphInfo = await GetGraphInfo(turnContext, UserAuthorization.DefaultHandlerName);
+            if (graphInfo != null)
+            {
+                displayName = graphInfo!["displayName"].GetValue<string>();
+            }
+            return displayName;
+        }
+
+        private async Task<JsonNode> GetGraphInfo(ITurnContext turnContext, string handleName)
+        {
+            string accessToken = await UserAuthorization.GetTurnTokenAsync(turnContext, handleName);
+            string graphApiUrl = $"https://graph.microsoft.com/v1.0/me";
+            try
+            {
+                using HttpClient client = new();
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                HttpResponseMessage response = await client.GetAsync(graphApiUrl);
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    return JsonNode.Parse(content);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle error response from Graph API
+                System.Diagnostics.Trace.WriteLine($"Error getting display name: {ex.Message}");
+            }
+            return null;
         }
     }
 }

@@ -29,7 +29,7 @@ namespace ElAgentApi.Bot.Agents
         public OfferingsAgent(IConfiguration configuration, ITurnContext turnContext, ITurnState turnState)
         {
             agentsClient = AzureAIAgent.CreateAgentsClient(configuration.GetValue<string>("AIProjectConnectionString")!, new DefaultAzureCredential());
-            var agent = agentsClient.Administration.GetAgent("asst_YK2flcJLkjtQBgnEC9qkJsiN");
+            var agent = agentsClient.Administration.GetAgent("asst_Lpxt50QbDbAbpwlsin8wLcby");
             aiAgent = new(agent, agentsClient);
             this.turnContext = turnContext;
             this.turnState = turnState;

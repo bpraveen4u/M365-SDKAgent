@@ -1,4 +1,6 @@
 ﻿
+using Microsoft.Agents.Core.Models;
+
 namespace ElAgentApi.Bot.Models
 {
     public class FileReference(string fileId, string fileName, string quote, Citation citation)
