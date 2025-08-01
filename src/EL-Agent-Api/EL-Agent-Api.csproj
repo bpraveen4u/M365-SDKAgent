@@ -13,6 +13,7 @@
     <PackageReference Include="Azure.Identity" Version="1.14.0" />
     <PackageReference Include="Microsoft.Agents.Authentication.Msal" Version="1.2.1-beta" />
     <PackageReference Include="Microsoft.Agents.Builder" Version="1.2.1-beta" />
+    <PackageReference Include="Microsoft.Agents.CopilotStudio.Client" Version="1.2.10-beta" />
     <PackageReference Include="Microsoft.Agents.Hosting.AspNetCore" Version="1.2.1-beta" />
     <PackageReference Include="Microsoft.SemanticKernel.Agents.AzureAI" Version="1.59.0-preview" />
     <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.59.0" />

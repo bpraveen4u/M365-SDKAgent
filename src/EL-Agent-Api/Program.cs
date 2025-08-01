@@ -4,11 +4,13 @@ using ElAgentApi.Bot.Agents;
 using ElAgentApi.Bot.Plugins;
 using Microsoft.Agents.Builder;
 using Microsoft.Agents.Builder.App;
+using Microsoft.Agents.CopilotStudio.Client;
 using Microsoft.Agents.Hosting.AspNetCore;
 using Microsoft.Agents.Storage;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using MyM365Agent1;
 
 var builder = WebApplication.CreateBuilder(args);
 AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
@@ -33,10 +35,16 @@ builder.Services.AddSingleton<IStorage, MemoryStorage>();
 
 // Add AgentApplicationOptions from config.
 builder.AddAgentApplicationOptions();
-//builder.Services.AddSingleton<AgentApplicationOptions>();
 
-//// Add AgentApplicationOptions.  This will use DI'd services and IConfiguration for construction.
-//builder.Services.AddTransient<AgentApplicationOptions>();
+//Copilot studio connection settings
+// Get the configuration settings for the DirectToEngine client from the appsettings.json file.
+SampleConnectionSettings settings = new SampleConnectionSettings(builder.Configuration.GetSection("CopilotStudioClientSettings"));
+builder.Services.AddSingleton(settings)
+    .AddTransient<CopilotClient>((s) =>
+    {
+        var logger = s.GetRequiredService<ILoggerFactory>().CreateLogger<CopilotClient>();
+        return new CopilotClient(settings, s.GetRequiredService<IHttpClientFactory>(), logger, "mcs");
+    });
 
 // Add the bot (which is transient)
 builder.AddAgent<ElAgentApi.Bot.LearningAgentSkill>();
