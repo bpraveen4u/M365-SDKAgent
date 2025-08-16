@@ -66,6 +66,7 @@ namespace ElAgentApi.Bot
                 new ServiceDescriptor(typeof(ITurnContext), turnContext),
                 new ServiceDescriptor(typeof(Kernel), kernel),
                 new ServiceDescriptor(typeof(OfferingsAgent), sp => new OfferingsAgent(this.configuration, turnContext, turnState), ServiceLifetime.Singleton),
+                new ServiceDescriptor(typeof(SharepointAgent), sp => new SharepointAgent(this.configuration, turnContext, turnState), ServiceLifetime.Singleton),
             ];
 
             serviceProvider = serviceCollection.BuildServiceProvider();

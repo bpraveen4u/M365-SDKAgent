@@ -43,6 +43,7 @@ public class OrchestratorAgent
         // Give the agent some tools to work with
         agent.Kernel.Plugins.Add(KernelPluginFactory.CreateFromType<DateTimePlugin>(serviceProvider: service));
         agent.Kernel.Plugins.Add(KernelPluginFactory.CreateFromType<OfferingsPlugin>(serviceProvider: service));
+        agent.Kernel.Plugins.Add(KernelPluginFactory.CreateFromType<SharepointPlugin>(serviceProvider: service));
         agent.Kernel.Plugins.Add(KernelPluginFactory.CreateFromType<MathPlugin>(serviceProvider: service));
     }
 
