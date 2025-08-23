@@ -7,13 +7,16 @@ using Microsoft.Agents.Builder;
 using Microsoft.Agents.Builder.State;
 using Microsoft.Agents.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Identity.Client;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.Agents.AzureAI;
 using Microsoft.SemanticKernel.Agents.Chat;
 using Microsoft.SemanticKernel.ChatCompletion;
 using System.Configuration;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 
 
@@ -27,23 +30,25 @@ namespace ElAgentApi.Bot.Agents
     {
         private readonly ITurnContext turnContext;
         private readonly ITurnState turnState;
+        private readonly string accessToken;
 #pragma warning disable SKEXP0110 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-        //private readonly AzureAIAgent aiAgent;
 
         private PersistentAgentsClient agentsClient;
+        private string foundryProjectEndpoint;
 
-        public SharepointAgent(IConfiguration configuration, ITurnContext turnContext, ITurnState turnState)
+        public SharepointAgent(IConfiguration configuration, ITurnContext turnContext, ITurnState turnState, string accessToken)
         {
-            agentsClient = AzureAIAgent.CreateAgentsClient(configuration.GetValue<string>("AIProjectConnectionString")!, new DefaultAzureCredential());
-            //var agent = agentsClient.Administration.GetAgent("asst_Di4116mzcGWtqIYyVVOytivd");
-            //aiAgent = new(agent, agentsClient);
+            this.foundryProjectEndpoint = configuration.GetValue<string>("AIProjectConnectionString")!;
+            agentsClient = AzureAIAgent.CreateAgentsClient(foundryProjectEndpoint, new DefaultAzureCredential());
             this.turnContext = turnContext;
             this.turnState = turnState;
+            this.accessToken = accessToken;
         }
 
         public async Task InvokeAgentAsync(ChatMessageContent chatMessage, CancellationToken cancellationToken)
         {
-            PersistentAgent agent = agentsClient.Administration.GetAgent("asst_Di4116mzcGWtqIYyVVOytivd");
+            string agentId = "asst_Di4116mzcGWtqIYyVVOytivd";
+            PersistentAgent agent = agentsClient.Administration.GetAgent(agentId);
             PersistentAgentThread? thread = null;
             var fileReferences = new List<FileReference>();
             var citations = new List<Citation>();
@@ -69,124 +74,99 @@ namespace ElAgentApi.Bot.Agents
                     MessageRole.User,
                     chatMessage.Content);
 
-                ThreadRun run = agentsClient.Runs.CreateRun(thread.Id, agent.Id);
+                // Example call to Azure AI Foundry Agents REST (create a thread)
+                using var http = new HttpClient();
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                var apiResponse = await http.PostAsJsonAsync($"{foundryProjectEndpoint}/threads/{thread.Id}/runs?api-version=2025-05-01", new { assistant_id = agentId });
 
-                // Poll until the run reaches a terminal status
+                if (!apiResponse.IsSuccessStatusCode)
+                {
+                    var econtent = await apiResponse.Content.ReadAsStringAsync();
+                    throw new InvalidOperationException($"Failed to create run: {apiResponse.ReasonPhrase}");
+                }
+                var content = await apiResponse.Content.ReadAsStringAsync();
+                string id;
+                string status;
+                using (JsonDocument doc = JsonDocument.Parse(content))
+                {
+                    id = doc.RootElement.GetProperty("id").GetString();
+                    status = doc.RootElement.GetProperty("status").GetString();
+                }
+
+                //Poll until the run reaches a terminal status
                 do
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(500));
-                    run = agentsClient.Runs.GetRun(thread.Id, run.Id);
+                    await Task.Delay(TimeSpan.FromMilliseconds(200));
+                    var run = await http.GetAsync($"{foundryProjectEndpoint}/threads/{thread.Id}/runs/{id}?api-version=2025-05-01");
+
+                    if (run.IsSuccessStatusCode)
+                    {
+                        var runStatus = await run.Content.ReadAsStringAsync();
+                        using (JsonDocument doc = JsonDocument.Parse(runStatus))
+                        {
+                            id = doc.RootElement.GetProperty("id").GetString();
+                            status = doc.RootElement.GetProperty("status").GetString();
+                        }
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Failed to get run status: {run.ReasonPhrase}");
+                    }
                 }
-                while (run.Status == RunStatus.Queued || run.Status == RunStatus.InProgress);
-                
-                if (run.Status != RunStatus.Completed)
+                while (status.Equals(RunStatus.Queued.ToString(), StringComparison.InvariantCultureIgnoreCase)
+                    || status.Equals(RunStatus.InProgress.ToString(), StringComparison.InvariantCultureIgnoreCase));
+                if (!status.Equals(RunStatus.Completed.ToString(), StringComparison.InvariantCultureIgnoreCase))
                 {
-                    throw new InvalidOperationException($"Run failed or was canceled: {run.LastError?.Message}");
+                    throw new InvalidOperationException($"Run failed or was canceled:");
                 }
+
 
                 Pageable<PersistentThreadMessage> messages = agentsClient.Messages.GetMessages(
                 thread.Id, order: ListSortOrder.Ascending);
 
                 StringBuilder sb = new StringBuilder();
                 // Display messages
-                foreach (PersistentThreadMessage threadMessage in messages)
+                var latestAgentMessage = messages.LastOrDefault(m => m.Role == MessageRole.Agent);
+                if (latestAgentMessage == null)
                 {
-                    foreach (MessageContent contentItem in threadMessage.ContentItems)
-                    {
-                        if (contentItem is MessageTextContent textItem)
-                        {
-                            string response = textItem.Text;
-                            if (response.Equals(chatMessage.Content, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                continue; // Skip null text items
-                            }
+                    turnContext.StreamingResponse.QueueTextChunk("I'm sorry, I couldn't find any information on that topic.");
+                    return;
+                }
 
-                            //https://github.com/azure-ai-foundry/foundry-samples/blob/main/samples/microsoft/csharp/getting-started-agents/BingGrounding/BingGrounding.md
-                            if (textItem.Annotations != null)
+                foreach (MessageContent contentItem in latestAgentMessage.ContentItems)
+                {
+                    if (contentItem is MessageTextContent textItem)
+                    {
+                        string response = textItem.Text;
+                        if (string.IsNullOrEmpty(response))
+                        {
+                            continue;
+                        }
+                        //https://github.com/azure-ai-foundry/foundry-samples/blob/main/samples/microsoft/csharp/getting-started-agents/BingGrounding/BingGrounding.md
+                        if (textItem.Annotations != null)
+                        {
+                            foreach (MessageTextAnnotation annotation in textItem.Annotations)
                             {
-                                foreach (MessageTextAnnotation annotation in textItem.Annotations)
+                                if (annotation is MessageTextUriCitationAnnotation urlAnnotation)
                                 {
-                                    if (annotation is MessageTextUriCitationAnnotation urlAnnotation)
-                                    {
-                                        response = response.Replace(urlAnnotation.Text, $" [{urlAnnotation.UriCitation.Title}] ({urlAnnotation.UriCitation.Uri})");
-                                    }
+                                    response = response.Replace(urlAnnotation.Text, $" [{urlAnnotation.UriCitation.Title}] ({urlAnnotation.UriCitation.Uri})");
                                 }
                             }
-
-                            sb.AppendLine(response);
                         }
-                        else if (contentItem is MessageImageFileContent imageFileItem)
-                        {
-                            sb.Append($"<image from ID: {imageFileItem.FileId}");
-                        }
-                        sb.AppendLine();
+                        turnContext.StreamingResponse.QueueTextChunk(response);
                     }
+                    else if (contentItem is MessageImageFileContent imageFileItem)
+                    {
+                        sb.Append($"<image from ID: {imageFileItem.FileId}");
+                    }
+                    //sb.AppendLine();
                 }
-
-                //TODO: invoke agent the stream
-                turnContext.StreamingResponse.QueueTextChunk(sb.ToString());
-
-                //await foreach (StreamingChatMessageContent chunk in aiAgent.InvokeStreamingAsync(chatMessage, agentThread, cancellationToken: cancellationToken))
-                //{
-                //    if (string.IsNullOrEmpty(threadId))
-                //    {
-                //        threadId = agentThread.Id;
-                //        turnState.SetValue("conversation.OfferingThreadId", threadId!);
-                //    }
-
-                //    // get the annotation content from the message chunk items, if there are any
-                //    var annotations = chunk.Items.OfType<StreamingAnnotationContent>();
-
-                //    foreach (StreamingAnnotationContent annotation in annotations)
-                //    {
-                //        // check if the file reference already exists in the list and skip it if it does
-                //        if (fileReferences.Any(fr => fr.Quote == annotation.Label)) { continue; }
-
-                //        var agentFile = await aiAgent.Client.Files.GetFileAsync(annotation.ReferenceId, cancellationToken);
-                //        var citation = new Citation(string.Empty, agentFile.Value.Filename, "https://m365.cloud.microsoft/chat");
-
-                //        var fileReference = new FileReference(agentFile.Value.Id, agentFile.Value.Filename, annotation.Label, citation);
-                //        fileReferences.Add(fileReference);
-                //    }
-
-                //    // if the message chunk content is empty, we can skip it
-                //    // this happens when the chunk contains StreamingAnnotationContent items
-                //    if (chunk.Content == null) { continue; }
-
-                //    // if the previous message chunk contained the citation quote, we can process it now
-                //    if (quote != string.Empty)
-                //    {
-                //        var fileReferenceIndex = fileReferences.FindIndex(fr => fr.Quote == quote);
-                //        //turnContext.StreamingResponse.QueueTextChunk($" [{fileReferenceIndex + 1}] ");
-
-                //        // reset the quote to empty string to avoid processing it again
-                //        quote = string.Empty;
-                //        continue;
-                //    }
-
-                //    // if the message chunk contains an annotation quote 【4:0†source】
-                //    // store the value for the next message chunk so we can process it
-                //    // we don't want to send it to the user yet
-                //    if (chunk.Content.Contains('【'))
-                //    {
-                //        quote = chunk.Content;
-                //        continue;
-                //    }
-                //    else
-                //    {
-                //        // just a regular message chunk, we can send it to the user
-                //        turnContext.StreamingResponse.QueueTextChunk(chunk.Content);
-                //    }
-
-                //    //chatHistory.Add(chunk.Content);
-                //    //yield return response;
-                //}
 
                 // add citations
-                foreach (var fileReference in fileReferences)
-                {
-                    citations.Add(fileReference.Citation);
-                }
+                //foreach (var fileReference in fileReferences)
+                //{
+                //    citations.Add(fileReference.Citation);
+                //}
                 //turnContext.StreamingResponse.AddCitations(citations);
 
             }

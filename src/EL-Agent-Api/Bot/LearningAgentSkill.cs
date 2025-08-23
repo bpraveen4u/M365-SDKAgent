@@ -1,11 +1,14 @@
 ﻿using Azure;
+using EL_Agent_Api.Bot.Agents;
 using ElAgentApi.Bot.Agents;
 using Microsoft.Agents.Builder;
 using Microsoft.Agents.Builder.App;
 using Microsoft.Agents.Builder.State;
 using Microsoft.Agents.Builder.UserAuth;
+using Microsoft.Agents.CopilotStudio.Client;
 using Microsoft.Agents.Core.Models;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -18,6 +21,7 @@ namespace ElAgentApi.Bot
     {
         private Kernel kernel;
         private readonly IConfiguration configuration;
+        private readonly IHttpClientFactory httpClientFactory;
         private ServiceProvider? serviceProvider;
 
         /// <summary>
@@ -25,14 +29,15 @@ namespace ElAgentApi.Bot
         /// </summary>
         private string _defaultDisplayName = "Unknown User";
 
-        public LearningAgentSkill(AgentApplicationOptions options, Kernel kernel, IConfiguration configuration) : base(options)
+        public LearningAgentSkill(AgentApplicationOptions options, Kernel kernel, IConfiguration configuration, IHttpClientFactory httpClientFactory) : base(options)
         {
             this.kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
             this.configuration = configuration;
+            this.httpClientFactory = httpClientFactory;
             OnConversationUpdate(ConversationUpdateEvents.MembersAdded, WelcomeMessageAsync);
             
             OnActivity(ActivityTypes.EndOfConversation, EndOfConversationAsync);
-            OnActivity(ActivityTypes.Message, MessageActivityAsync, rank: RouteRank.Last);
+            OnActivity(ActivityTypes.Message, MessageActivityAsync, rank: RouteRank.Last, autoSignInHandlers: ["auto", "aai", "mcs"]);
             OnTurnError(async (turnContext, turnState, exception, cancellationToken) =>
             {
                 await turnState.Conversation.DeleteStateAsync(turnContext, cancellationToken);
@@ -60,13 +65,17 @@ namespace ElAgentApi.Bot
 
         protected async Task MessageActivityAsync(ITurnContext turnContext, ITurnState turnState, CancellationToken cancellationToken)
         {
+            var foundryToken = await UserAuthorization.ExchangeTurnTokenAsync(turnContext, "aai");
+            //var mcsToken = await UserAuthorization.ExchangeTurnTokenAsync(turnContext, "mcs");
+            var mcsClient = GetClient(turnContext);
             // Setup local service connection
             ServiceCollection serviceCollection = [
                 new ServiceDescriptor(typeof(ITurnState), turnState),
                 new ServiceDescriptor(typeof(ITurnContext), turnContext),
                 new ServiceDescriptor(typeof(Kernel), kernel),
                 new ServiceDescriptor(typeof(OfferingsAgent), sp => new OfferingsAgent(this.configuration, turnContext, turnState), ServiceLifetime.Singleton),
-                new ServiceDescriptor(typeof(SharepointAgent), sp => new SharepointAgent(this.configuration, turnContext, turnState), ServiceLifetime.Singleton),
+                new ServiceDescriptor(typeof(SharepointAgent), sp => new SharepointAgent(this.configuration, turnContext, turnState, foundryToken), ServiceLifetime.Singleton),
+                new ServiceDescriptor(typeof(SimpleCopilotAgent), sp => new SimpleCopilotAgent(this.configuration, turnContext, turnState, mcsClient), ServiceLifetime.Singleton),
             ];
 
             serviceProvider = serviceCollection.BuildServiceProvider();
@@ -97,6 +106,25 @@ namespace ElAgentApi.Bot
                 ChatHistory chatHistory = turnState.GetValue("conversation.chatHistory", () => new ChatHistory());
                 await orchestratorAgent.InvokeAgentAsync(message, chatHistory, cancellationToken);
             }
+        }
+
+        CopilotClient GetClient(ITurnContext turnContext)
+        {
+            var settings = new ConnectionSettings(configuration.GetSection("CopilotStudioClientSettings"));
+            string[] scopes = [CopilotClient.ScopeFromSettings(settings)];
+            var token = UserAuthorization.ExchangeTurnTokenAsync(turnContext, "mcs", exchangeScopes: scopes).Result;
+            return new CopilotClient(
+                settings,
+                httpClientFactory,
+                tokenProviderFunction: async (s) =>
+                {
+                    // In this sample, the Azure Bot OAuth Connection is configured to return an 
+                    // exchangeable token, that can be exchange for different scopes.  This can be
+                    // done multiple times using different scopes.
+                    return await UserAuthorization.ExchangeTurnTokenAsync(turnContext, "mcs", exchangeScopes: scopes);
+                },
+                NullLogger.Instance,
+                "mcs");
         }
 
         private async Task WelcomeMessageAsync(ITurnContext turnContext, ITurnState turnState, CancellationToken cancellationToken)

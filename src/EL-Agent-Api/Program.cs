@@ -36,15 +36,6 @@ builder.Services.AddSingleton<IStorage, MemoryStorage>();
 // Add AgentApplicationOptions from config.
 builder.AddAgentApplicationOptions();
 
-//Copilot studio connection settings
-// Get the configuration settings for the DirectToEngine client from the appsettings.json file.
-SampleConnectionSettings settings = new SampleConnectionSettings(builder.Configuration.GetSection("CopilotStudioClientSettings"));
-builder.Services.AddSingleton(settings)
-    .AddTransient<CopilotClient>((s) =>
-    {
-        var logger = s.GetRequiredService<ILoggerFactory>().CreateLogger<CopilotClient>();
-        return new CopilotClient(settings, s.GetRequiredService<IHttpClientFactory>(), logger, "mcs");
-    });
 
 // Add the bot (which is transient)
 builder.AddAgent<ElAgentApi.Bot.LearningAgentSkill>();
